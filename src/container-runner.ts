@@ -213,6 +213,9 @@ function buildContainerArgs(
 ): string[] {
   const args: string[] = ['run', '-i', '--rm', '--name', containerName];
 
+  // Expose noVNC web viewer on port 6080 (http://localhost:6080/vnc.html)
+  args.push('-p', '6080:6080');
+
   // Pass host timezone so container's local time matches the user's
   args.push('-e', `TZ=${TIMEZONE}`);
 
