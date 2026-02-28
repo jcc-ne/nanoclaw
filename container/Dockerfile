@@ -25,6 +25,7 @@ RUN apt-get update && \
             libxshmfence1 \
             curl \
             git \
+            poppler-utils \
             xvfb \
             x11vnc \
             novnc \
