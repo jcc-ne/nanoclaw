@@ -199,6 +199,27 @@ Read `/workspace/project/data/registered_groups.json` and format it nicely.
 
 ---
 
+## Life Tasks
+
+The life-improvement project is at `/workspace/extra/life-improvement/`. When it is mounted, use it to track real-life work.
+
+**Task tracking** — follow the protocol in `tasks/tasks.md`:
+- Check `tasks/tasks.md` for the current overview (Active, Waiting, Backlog, Completed)
+- When starting work, create a folder in `tasks/active/<task-name>/` and update `tasks/tasks.md`
+- When completing, move the folder to `tasks/completed/` and update `tasks/tasks.md`
+
+**When unsure what to do next** — don't wait for the user to direct you:
+- Read `tasks/tasks.md` to see what's active or in backlog
+- Explore active task folders to understand context and next steps
+- Research how to proceed on your own (web search, read existing docs, check runbooks)
+- Only ask the user when genuinely blocked, not just for reassurance
+
+**Runbook check** — when finishing a task that is recurring or reusable:
+- Check if a runbook already exists in `runbooks/`
+- If not, ask the user: "This looks like something worth repeating — should I create a runbook?"
+
+---
+
 ## Global Memory
 
 You can read and write to `/workspace/project/groups/global/CLAUDE.md` for facts that should apply to all groups. Only update global memory when explicitly asked to "remember this globally" or similar.
