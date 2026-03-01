@@ -9,6 +9,7 @@ import path from 'path';
 import {
   CONTAINER_IMAGE,
   CONTAINER_MAX_OUTPUT_SIZE,
+  CONTAINER_MEMORY,
   CONTAINER_TIMEOUT,
   DATA_DIR,
   GROUPS_DIR,
@@ -212,6 +213,9 @@ function buildContainerArgs(
   containerName: string,
 ): string[] {
   const args: string[] = ['run', '-i', '--rm', '--name', containerName];
+
+  // Memory limit (overridable via CONTAINER_MEMORY env var)
+  args.push('--memory', CONTAINER_MEMORY);
 
   // Expose noVNC web viewer on port 6080 (http://localhost:6080/vnc.html)
   args.push('-p', '6080:6080');
