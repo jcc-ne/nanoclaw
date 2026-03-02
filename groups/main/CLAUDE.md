@@ -137,6 +137,8 @@ sqlite3 /workspace/project/store/messages.db "SELECT name, folder, container_con
 
 ### Trigger Behavior
 
+Default trigger for Janine Telegram groups: `@clawdia_ja9_bot`
+
 - **Main group**: No trigger needed — all messages are processed automatically
 - **Groups with `requiresTrigger: false`**: No trigger needed — all messages processed (use for 1-on-1 or solo chats)
 - **Other groups** (default): Messages must start with `@AssistantName` to be processed
@@ -152,7 +154,7 @@ cat > /workspace/ipc/tasks/register_$(date +%s).json << 'EOF'
   "jid": "120363336345536173@g.us",
   "name": "Family Chat",
   "folder": "family-chat",
-  "trigger": "@Clawdia",
+  "trigger": "@clawdia_ja9_bot",
   "requiresTrigger": true,
   "containerConfig": {
     "additionalMounts": [
@@ -172,7 +174,7 @@ cat > /workspace/ipc/tasks/register_$(date +%s).json << 'EOF'
 EOF
 ```
 
-**Always include `containerConfig` with the standard additional mounts** (FarmMooMon + life-improvement) when registering any new group, unless the user explicitly says not to. Check existing groups to confirm the current standard mounts:
+**Always include `containerConfig` with the standard additional mounts** (FarmMooMon + life-improvement) when registering any new group, unless the user explicitly says not to. The `life-improvement` mount should be read/write (`"readonly": false`). Check existing groups to confirm the current standard mounts:
 
 ```bash
 sqlite3 /workspace/project/store/messages.db "SELECT container_config FROM registered_groups LIMIT 1;"
