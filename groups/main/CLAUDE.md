@@ -141,7 +141,7 @@ Default trigger for Janine Telegram groups: `@clawdia_ja9_bot`
 
 - **Main group**: No trigger needed — all messages are processed automatically
 - **Groups with `requiresTrigger: false`**: No trigger needed — all messages processed (use for 1-on-1 or solo chats)
-- **Other groups** (default): Messages must start with `@AssistantName` to be processed
+- **Other groups** (default): Messages must start with `@clawdia_ja9_bot` to be processed
 
 ### Adding a Group
 
@@ -167,6 +167,11 @@ cat > /workspace/ipc/tasks/register_$(date +%s).json << 'EOF'
         "hostPath": "/Users/janine/Projects/2026/life-improvement",
         "containerPath": "life-improvement",
         "readonly": false
+      },
+      {
+        "hostPath": "/Users/janine/Library/Mobile Documents/iCloud~md~obsidian/Documents/Clawdia",
+        "containerPath": "Clawdia",
+        "readonly": false
       }
     ]
   }
@@ -174,7 +179,7 @@ cat > /workspace/ipc/tasks/register_$(date +%s).json << 'EOF'
 EOF
 ```
 
-**Always include `containerConfig` with the standard additional mounts** (FarmMooMon + life-improvement) when registering any new group, unless the user explicitly says not to. The `life-improvement` mount should be read/write (`"readonly": false`). Check existing groups to confirm the current standard mounts:
+**Always include `containerConfig` with the standard additional mounts** (FarmMooMon + life-improvement + Clawdia) when registering any new group, unless the user explicitly says not to. The `life-improvement` and `Clawdia` mounts should be read/write (`"readonly": false`). Check existing groups to confirm the current standard mounts:
 
 ```bash
 sqlite3 /workspace/project/store/messages.db "SELECT container_config FROM registered_groups LIMIT 1;"
@@ -219,6 +224,7 @@ sqlite3 /workspace/project/store/messages.db "SELECT name, folder, requires_trig
 ## Life Tasks
 
 The life-improvement project is at `/workspace/extra/life-improvement/`. When it is mounted, use it to track real-life work.
+Make sure you read /workspace/extra/life-improvement/CLAUDE.md for task tracking and creation.
 
 **Task tracking** — follow the protocol in `tasks/tasks.md`:
 - Check `tasks/tasks.md` for the current overview (Active, Waiting, Backlog, Completed)

@@ -50,6 +50,7 @@ When you learn something important:
 ## Life Tasks
 
 The life-improvement project is at `/workspace/extra/life-improvement/`. When it is mounted, use it to track real-life work.
+Make sure you read /workspace/extra/life-improvement/CLAUDE.md for task tracking and creation.
 
 **Task tracking** — follow the protocol in `tasks/tasks.md`:
 - Check `tasks/tasks.md` for the current overview (Active, Waiting, Backlog, Completed)
