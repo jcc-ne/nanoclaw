@@ -228,10 +228,14 @@ function isPortFree(port: number): Promise<boolean> {
 async function reserveNoVncPort(start = 6080): Promise<number> {
   for (let port = start; port < start + 100; port++) {
     if (reservedNoVncPorts.has(port)) continue;
+    // Optimistically reserve before the async check so concurrent callers
+    // see it as taken and skip to the next port (prevents TOCTOU race).
+    reservedNoVncPorts.add(port);
     if (await isPortFree(port)) {
-      reservedNoVncPorts.add(port);
       return port;
     }
+    // Port is actually in use — un-reserve and try the next one.
+    reservedNoVncPorts.delete(port);
   }
   throw new Error(`No free noVNC port found in range ${start}–${start + 99}`);
 }
