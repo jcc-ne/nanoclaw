@@ -12,7 +12,7 @@ import {
   TIMEZONE,
 } from './config.js';
 import { AvailableGroup } from './container-runner.js';
-import { createTask, deleteTask, getTaskById, updateTask } from './db.js';
+import { createTask, deleteSession, deleteTask, getTaskById, updateTask } from './db.js';
 import { isValidGroupFolder } from './group-folder.js';
 import { logger } from './logger.js';
 import { RegisteredGroup } from './types.js';
@@ -185,6 +185,7 @@ export interface IpcDeps {
     availableGroups: AvailableGroup[],
     registeredJids: Set<string>,
   ) => void;
+  clearSession: (groupFolder: string) => void;
 }
 
 let ipcWatcherRunning = false;
@@ -589,6 +590,19 @@ export async function processTaskIpc(
           { data },
           'Invalid register_group request - missing required fields',
         );
+      }
+      break;
+
+    case 'reset_session':
+      // Non-main groups can only reset their own session; main can reset any.
+      // If groupFolder is omitted, the group is resetting itself (always allowed).
+      if (isMain || !data.groupFolder || data.groupFolder === sourceGroup) {
+        const target = (data.groupFolder as string | undefined) || sourceGroup;
+        deleteSession(target);
+        deps.clearSession(target);
+        logger.info({ target, sourceGroup }, 'Session reset via IPC');
+      } else {
+        logger.warn({ sourceGroup, groupFolder: data.groupFolder }, 'Unauthorized reset_session attempt blocked');
       }
       break;
 

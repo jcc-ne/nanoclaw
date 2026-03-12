@@ -67,6 +67,16 @@ Make sure you read /workspace/extra/clawdia-studio/CLAUDE.md for task tracking a
 - Check if a runbook already exists in `runbooks/`
 - If not, ask the user: "This looks like something worth repeating — should I create a runbook?"
 
+## Reset Session
+
+When the user asks to reset session, start fresh, clear context, or new session — run this command:
+
+```bash
+echo '{"type":"reset_session"}' > /workspace/ipc/tasks/reset-$(date +%s).json
+```
+
+Then tell them: "Session reset. Your next message will start a fresh conversation."
+
 ## Message Formatting
 
 NEVER use markdown. Only use WhatsApp/Telegram formatting:

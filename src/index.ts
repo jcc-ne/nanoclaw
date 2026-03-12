@@ -20,6 +20,7 @@ import {
 } from './container-runner.js';
 import { cleanupOrphans, ensureContainerRuntimeRunning } from './container-runtime.js';
 import {
+  deleteSession,
   getAllChats,
   getAllRegisteredGroups,
   getAllSessions,
@@ -50,6 +51,11 @@ let sessions: Record<string, string> = {};
 let registeredGroups: Record<string, RegisteredGroup> = {};
 let lastAgentTimestamp: Record<string, string> = {};
 let messageLoopRunning = false;
+
+// Incremented each time a group's session is reset. runAgent captures the
+// generation at start and skips writing newSessionId back if it has changed,
+// preventing a still-running container from overwriting a mid-run reset.
+const resetGenerations: Record<string, number> = {};
 
 let whatsapp: WhatsAppChannel;
 const channels: Channel[] = [];
@@ -237,6 +243,7 @@ async function runAgent(
 ): Promise<'success' | 'error'> {
   const isMain = group.folder === MAIN_GROUP_FOLDER;
   const sessionId = sessions[group.folder];
+  const resetGen = resetGenerations[group.folder] ?? 0;
 
   // Update tasks snapshot for container to read (filtered by group)
   const tasks = getAllTasks();
@@ -266,7 +273,7 @@ async function runAgent(
   // Wrap onOutput to track session ID from streamed results
   const wrappedOnOutput = onOutput
     ? async (output: ContainerOutput) => {
-        if (output.newSessionId) {
+        if (output.newSessionId && (resetGenerations[group.folder] ?? 0) === resetGen) {
           sessions[group.folder] = output.newSessionId;
           setSession(group.folder, output.newSessionId);
         }
@@ -289,7 +296,7 @@ async function runAgent(
       wrappedOnOutput,
     );
 
-    if (output.newSessionId) {
+    if (output.newSessionId && (resetGenerations[group.folder] ?? 0) === resetGen) {
       sessions[group.folder] = output.newSessionId;
       setSession(group.folder, output.newSessionId);
     }
@@ -487,6 +494,16 @@ async function main(): Promise<void> {
     syncGroupMetadata: (force) => whatsapp?.syncGroupMetadata(force) ?? Promise.resolve(),
     getAvailableGroups,
     writeGroupsSnapshot: (gf, im, ag, rj) => writeGroupsSnapshot(gf, im, ag, rj),
+    clearSession: (groupFolder) => {
+      delete sessions[groupFolder];
+      deleteSession(groupFolder);
+      resetGenerations[groupFolder] = (resetGenerations[groupFolder] ?? 0) + 1;
+      // Kill the running container so the next message spawns fresh
+      const chatJid = Object.entries(registeredGroups).find(
+        ([, g]) => g.folder === groupFolder,
+      )?.[0];
+      if (chatJid) queue.killContainer(chatJid);
+    },
   });
   queue.setProcessMessagesFn(processGroupMessages);
   recoverPendingMessages();
