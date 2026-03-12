@@ -164,13 +164,8 @@ cat > /workspace/ipc/tasks/register_$(date +%s).json << 'EOF'
         "readonly": true
       },
       {
-        "hostPath": "/Users/janine/Projects/2026/life-improvement",
-        "containerPath": "life-improvement",
-        "readonly": false
-      },
-      {
-        "hostPath": "/Users/janine/Library/Mobile Documents/iCloud~md~obsidian/Documents/Clawdia",
-        "containerPath": "Clawdia",
+        "hostPath": "${CLAWDIA_STUDIO_PATH}",
+        "containerPath": "clawdia-studio",
         "readonly": false
       }
     ]
@@ -179,7 +174,7 @@ cat > /workspace/ipc/tasks/register_$(date +%s).json << 'EOF'
 EOF
 ```
 
-**Always include `containerConfig` with the standard additional mounts** (FarmMooMon + life-improvement + Clawdia) when registering any new group, unless the user explicitly says not to. The `life-improvement` and `Clawdia` mounts should be read/write (`"readonly": false`). Check existing groups to confirm the current standard mounts:
+**Always include `containerConfig` with the standard additional mounts** (FarmMooMon + clawdia-studio) when registering any new group, unless the user explicitly says not to. The `clawdia-studio` mount should be read/write (`"readonly": false`). Check existing groups to confirm the current standard mounts:
 
 ```bash
 sqlite3 /workspace/project/store/messages.db "SELECT container_config FROM registered_groups LIMIT 1;"
@@ -223,8 +218,8 @@ sqlite3 /workspace/project/store/messages.db "SELECT name, folder, requires_trig
 
 ## Life Tasks
 
-The life-improvement project is at `/workspace/extra/life-improvement/`. When it is mounted, use it to track real-life work.
-Make sure you read /workspace/extra/life-improvement/CLAUDE.md for task tracking and creation.
+The clawdia-studio project is at `/workspace/extra/clawdia-studio/`. When it is mounted, use it to track real-life work.
+Make sure you read /workspace/extra/clawdia-studio/CLAUDE.md for task tracking and creation.
 
 **Task tracking** — follow the protocol in `tasks/tasks.md`:
 - Check `tasks/tasks.md` for the current overview (Active, Waiting, Backlog, Completed)
