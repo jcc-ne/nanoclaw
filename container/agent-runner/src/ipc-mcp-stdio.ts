@@ -14,6 +14,8 @@ import { CronExpressionParser } from 'cron-parser';
 const IPC_DIR = '/workspace/ipc';
 const MESSAGES_DIR = path.join(IPC_DIR, 'messages');
 const TASKS_DIR = path.join(IPC_DIR, 'tasks');
+const REQUESTS_DIR = path.join(IPC_DIR, 'requests');
+const RESPONSES_DIR = path.join(IPC_DIR, 'responses');
 
 // Context from environment variables (set by the agent runner)
 const chatJid = process.env.NANOCLAW_CHAT_JID!;
@@ -279,6 +281,140 @@ Use available_groups.json to find the JID for a group. The folder name should be
     };
   },
 );
+
+// --- macOS Reminders tools ---
+
+async function sendReminderRequest(
+  operation: string,
+  params: Record<string, string>,
+): Promise<string> {
+  const requestId = `rem-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const data = {
+    type: 'reminder_request',
+    id: requestId,
+    operation,
+    params,
+  };
+
+  // Write with the requestId as the filename so the response can be matched
+  const reqPath = path.join(REQUESTS_DIR, `${requestId}.json`);
+  fs.mkdirSync(REQUESTS_DIR, { recursive: true });
+  const tempPath = `${reqPath}.tmp`;
+  fs.writeFileSync(tempPath, JSON.stringify(data, null, 2));
+  fs.renameSync(tempPath, reqPath);
+
+  // Poll for response
+  const responsePath = path.join(RESPONSES_DIR, `${requestId}.json`);
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline) {
+    if (fs.existsSync(responsePath)) {
+      const response = JSON.parse(fs.readFileSync(responsePath, 'utf-8'));
+      try { fs.unlinkSync(responsePath); } catch { /* ignore */ }
+      if (response.error) throw new Error(response.error);
+      return response.result ?? '';
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  throw new Error('Reminders request timed out after 15 seconds');
+}
+
+server.tool(
+  'reminders_list_lists',
+  'List all reminder lists available in the macOS Reminders app.',
+  {},
+  async () => {
+    try {
+      const result = await sendReminderRequest('list_lists', {});
+      const lists = result.trim().split('\n').filter(Boolean);
+      if (lists.length === 0) return { content: [{ type: 'text' as const, text: 'No reminder lists found.' }] };
+      return { content: [{ type: 'text' as const, text: `Reminder lists:\n${lists.map((l) => `- ${l}`).join('\n')}` }] };
+    } catch (err) {
+      return {
+        content: [{ type: 'text' as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }],
+        isError: true,
+      };
+    }
+  },
+);
+
+server.tool(
+  'reminders_list',
+  'List incomplete reminders from the macOS Reminders app. Optionally filter by list name.',
+  {
+    list: z.string().optional().describe('Reminder list name to filter by (e.g. "Reminders", "Shopping"). Omit to list all.'),
+  },
+  async (args) => {
+    try {
+      const result = await sendReminderRequest('list', { list: args.list ?? '' });
+      const lines = result.trim().split('\n').filter(Boolean);
+      if (lines.length === 0) return { content: [{ type: 'text' as const, text: 'No reminders found.' }] };
+      const formatted = lines.map((line) => {
+        const [list, name, due] = line.split('\t');
+        return due ? `- [${list}] ${name} (due: ${due})` : `- [${list}] ${name}`;
+      }).join('\n');
+      return { content: [{ type: 'text' as const, text: `Reminders:\n${formatted}` }] };
+    } catch (err) {
+      return {
+        content: [{ type: 'text' as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }],
+        isError: true,
+      };
+    }
+  },
+);
+
+server.tool(
+  'reminders_add',
+  'Add a new reminder to the macOS Reminders app.',
+  {
+    name: z.string().describe('The reminder title/name'),
+    list: z.string().optional().describe('List to add to (defaults to "Reminders")'),
+    due_date: z.string().optional().describe('Due date as ISO 8601 string e.g. "2026-03-01T14:00:00". Omit for no due date.'),
+  },
+  async (args) => {
+    try {
+      await sendReminderRequest('add', {
+        name: args.name,
+        list: args.list ?? 'Reminders',
+        due_date: args.due_date ?? '',
+      });
+      const dueStr = args.due_date ? ` (due: ${args.due_date})` : '';
+      return { content: [{ type: 'text' as const, text: `Reminder added: "${args.name}"${dueStr}` }] };
+    } catch (err) {
+      return {
+        content: [{ type: 'text' as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }],
+        isError: true,
+      };
+    }
+  },
+);
+
+server.tool(
+  'reminders_complete',
+  'Mark a reminder as complete in the macOS Reminders app.',
+  {
+    name: z.string().describe('The exact reminder name to mark as complete'),
+    list: z.string().optional().describe('List to search in. Omit to search all lists.'),
+  },
+  async (args) => {
+    try {
+      const result = await sendReminderRequest('complete', {
+        name: args.name,
+        list: args.list ?? '',
+      });
+      if (result === 'not found') {
+        return { content: [{ type: 'text' as const, text: `Reminder not found: "${args.name}"` }], isError: true };
+      }
+      return { content: [{ type: 'text' as const, text: `Marked as complete: "${args.name}"` }] };
+    } catch (err) {
+      return {
+        content: [{ type: 'text' as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }],
+        isError: true,
+      };
+    }
+  },
+);
+
+// --- End Reminders ---
 
 // Start the stdio transport
 const transport = new StdioServerTransport();

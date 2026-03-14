@@ -1,4 +1,6 @@
+import { execFileSync } from 'child_process';
 import fs from 'fs';
+import { tmpdir } from 'os';
 import path from 'path';
 
 import { CronExpressionParser } from 'cron-parser';
@@ -10,10 +12,166 @@ import {
   TIMEZONE,
 } from './config.js';
 import { AvailableGroup } from './container-runner.js';
-import { createTask, deleteTask, getTaskById, updateTask } from './db.js';
+import { createTask, deleteSession, deleteTask, getTaskById, updateTask } from './db.js';
 import { isValidGroupFolder } from './group-folder.js';
 import { logger } from './logger.js';
 import { RegisteredGroup } from './types.js';
+
+// --- macOS Reminders via AppleScript ---
+
+function asAppleScriptString(str: string): string {
+  const parts = str.split('"');
+  if (parts.length === 1) return `"${str}"`;
+  return parts.map((p) => `"${p}"`).join(' & quote & ');
+}
+
+function runAppleScript(script: string): string {
+  const tmpFile = path.join(tmpdir(), `nanoclaw-reminders-${Date.now()}.applescript`);
+  try {
+    fs.writeFileSync(tmpFile, script, 'utf-8');
+    return execFileSync('osascript', [tmpFile], {
+      encoding: 'utf-8',
+      timeout: 10000,
+    }).trim();
+  } finally {
+    try {
+      fs.unlinkSync(tmpFile);
+    } catch {
+      // ignore
+    }
+  }
+}
+
+function formatDateForAppleScript(isoDate: string): string {
+  const d = new Date(isoDate);
+  if (isNaN(d.getTime())) return isoDate; // pass through if not parseable
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const h = d.getHours();
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 || 12;
+  return `${pad(d.getMonth() + 1)}/${pad(d.getDate())}/${d.getFullYear()} ${pad(h12)}:${pad(d.getMinutes())}:${pad(d.getSeconds())} ${ampm}`;
+}
+
+async function processReminderRequest(data: {
+  id: string;
+  operation: string;
+  params?: Record<string, string>;
+}): Promise<{ result?: string; error?: string }> {
+  const params = data.params || {};
+  let script: string;
+
+  switch (data.operation) {
+    case 'list_lists': {
+      script = `tell application "Reminders"
+  set output to ""
+  repeat with l in (every list)
+    set output to output & name of l & linefeed
+  end repeat
+  return output
+end tell`;
+      break;
+    }
+
+    case 'list': {
+      const listName = params.list || '';
+      if (listName) {
+        script = `tell application "Reminders"
+  set output to ""
+  try
+    set targetList to first list whose name is ${asAppleScriptString(listName)}
+    repeat with r in (every reminder in targetList whose completed is false)
+      set reminderName to name of r
+      set dueDate to ""
+      if due date of r is not missing value then
+        set dueDate to (due date of r as string)
+      end if
+      set output to output & ${asAppleScriptString(listName)} & tab & reminderName & tab & dueDate & linefeed
+    end repeat
+  end try
+  return output
+end tell`;
+      } else {
+        script = `tell application "Reminders"
+  set output to ""
+  repeat with l in (every list)
+    set listName to name of l
+    repeat with r in (every reminder in l whose completed is false)
+      set reminderName to name of r
+      set dueDate to ""
+      if due date of r is not missing value then
+        set dueDate to (due date of r as string)
+      end if
+      set output to output & listName & tab & reminderName & tab & dueDate & linefeed
+    end repeat
+  end repeat
+  return output
+end tell`;
+      }
+      break;
+    }
+
+    case 'add': {
+      const name = params.name;
+      const listName = params.list || 'Reminders';
+      const dueDate = params.due_date || '';
+
+      if (!name) return { error: 'name is required' };
+
+      const dueDateLine = dueDate
+        ? `  set due date of newReminder to date ${asAppleScriptString(formatDateForAppleScript(dueDate))}`
+        : '';
+
+      script = `tell application "Reminders"
+  set targetList to first list whose name is ${asAppleScriptString(listName)}
+  set newReminder to make new reminder at end of targetList
+  set name of newReminder to ${asAppleScriptString(name)}
+${dueDateLine}
+end tell
+return "ok"`;
+      break;
+    }
+
+    case 'complete': {
+      const name = params.name;
+      const listName = params.list || '';
+
+      if (!name) return { error: 'name is required' };
+
+      if (listName) {
+        script = `tell application "Reminders"
+  set theReminder to (first reminder of list ${asAppleScriptString(listName)} whose name is ${asAppleScriptString(name)})
+  set completed of theReminder to true
+end tell
+return "ok"`;
+      } else {
+        script = `tell application "Reminders"
+  repeat with l in (every list)
+    repeat with r in (every reminder in l)
+      if name of r is ${asAppleScriptString(name)} and completed of r is false then
+        set completed of r to true
+        return "ok"
+      end if
+    end repeat
+  end repeat
+  return "not found"
+end tell`;
+      }
+      break;
+    }
+
+    default:
+      return { error: `Unknown operation: ${data.operation}` };
+  }
+
+  try {
+    const result = runAppleScript(script);
+    return { result };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+// --- End Reminders ---
 
 export interface IpcDeps {
   sendMessage: (jid: string, text: string) => Promise<void>;
@@ -27,6 +185,7 @@ export interface IpcDeps {
     availableGroups: AvailableGroup[],
     registeredJids: Set<string>,
   ) => void;
+  clearSession: (groupFolder: string) => void;
 }
 
 let ipcWatcherRunning = false;
@@ -142,6 +301,59 @@ export function startIpcWatcher(deps: IpcDeps): void {
         }
       } catch (err) {
         logger.error({ err, sourceGroup }, 'Error reading IPC tasks directory');
+      }
+
+      // Process reminder requests from this group's IPC directory
+      const requestsDir = path.join(ipcBaseDir, sourceGroup, 'requests');
+      const responsesDir = path.join(ipcBaseDir, sourceGroup, 'responses');
+      try {
+        if (fs.existsSync(requestsDir)) {
+          const requestFiles = fs
+            .readdirSync(requestsDir)
+            .filter((f) => f.endsWith('.json'));
+          for (const file of requestFiles) {
+            const filePath = path.join(requestsDir, file);
+            let requestId: string | undefined;
+            try {
+              const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+              fs.unlinkSync(filePath);
+              if (data.type === 'reminder_request' && data.id && data.operation) {
+                requestId = data.id as string;
+                const response = await processReminderRequest(data);
+                fs.mkdirSync(responsesDir, { recursive: true });
+                fs.writeFileSync(
+                  path.join(responsesDir, `${requestId}.json`),
+                  JSON.stringify(response),
+                );
+                logger.info(
+                  { requestId, operation: data.operation, sourceGroup },
+                  'Reminder request processed',
+                );
+              }
+            } catch (err) {
+              logger.error(
+                { file, sourceGroup, err },
+                'Error processing reminder request',
+              );
+              if (requestId) {
+                try {
+                  fs.mkdirSync(responsesDir, { recursive: true });
+                  fs.writeFileSync(
+                    path.join(responsesDir, `${requestId}.json`),
+                    JSON.stringify({ error: String(err) }),
+                  );
+                } catch {
+                  // ignore
+                }
+              }
+            }
+          }
+        }
+      } catch (err) {
+        logger.error(
+          { err, sourceGroup },
+          'Error reading IPC requests directory',
+        );
       }
     }
 
@@ -378,6 +590,19 @@ export async function processTaskIpc(
           { data },
           'Invalid register_group request - missing required fields',
         );
+      }
+      break;
+
+    case 'reset_session':
+      // Non-main groups can only reset their own session; main can reset any.
+      // If groupFolder is omitted, the group is resetting itself (always allowed).
+      if (isMain || !data.groupFolder || data.groupFolder === sourceGroup) {
+        const target = (data.groupFolder as string | undefined) || sourceGroup;
+        deleteSession(target);
+        deps.clearSession(target);
+        logger.info({ target, sourceGroup }, 'Session reset via IPC');
+      } else {
+        logger.warn({ sourceGroup, groupFolder: data.groupFolder }, 'Unauthorized reset_session attempt blocked');
       }
       break;
 

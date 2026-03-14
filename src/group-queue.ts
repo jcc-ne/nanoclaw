@@ -336,6 +336,17 @@ export class GroupQueue {
     }
   }
 
+  /**
+   * Kill the active container for a group immediately (e.g. on session reset).
+   * The next message will spawn a fresh container with no session.
+   */
+  killContainer(groupJid: string): void {
+    const state = this.groups.get(groupJid);
+    if (!state?.process || state.process.killed) return;
+    logger.info({ groupJid }, 'Killing container for session reset');
+    state.process.kill('SIGKILL');
+  }
+
   async shutdown(_gracePeriodMs: number): Promise<void> {
     this.shuttingDown = true;
 
