@@ -219,9 +219,11 @@ function isPortFree(port: number): Promise<boolean> {
     const server = net.createServer();
     server.once('error', () => resolve(false));
     server.once('listening', () => server.close(() => resolve(true)));
-    // Bind on all interfaces (0.0.0.0) to match how Apple Container binds ports,
-    // so we correctly detect ports already held by running containers.
-    server.listen(port);
+    // Bind on 0.0.0.0 explicitly to detect IPv4 ports held by Docker.
+    // Without this, Node.js binds to :: (IPv6) which on macOS does NOT conflict
+    // with 0.0.0.0:PORT (IPv4), causing false positives — isPortFree returns true
+    // even when Docker already has the port allocated.
+    server.listen(port, '0.0.0.0');
   });
 }
 

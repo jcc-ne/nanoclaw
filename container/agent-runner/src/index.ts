@@ -419,8 +419,11 @@ async function runQuery(
     options: {
       cwd: '/workspace/group',
       additionalDirectories: extraDirs.length > 0 ? extraDirs : undefined,
-      resume: sessionId,
-      resumeSessionAt: resumeAt,
+      // Only resume if the host provided a session ID (exists in DB).
+      // When undefined (session cleared/reset), don't pass resume options at all —
+      // passing resume:undefined still causes the SDK to load the latest session
+      // file from disk, which re-executes the last user message (e.g. a reset command).
+      ...(sessionId !== undefined ? { resume: sessionId, resumeSessionAt: resumeAt } : {}),
       systemPrompt: globalClaudeMd
         ? { type: 'preset' as const, preset: 'claude_code' as const, append: globalClaudeMd }
         : undefined,
@@ -539,7 +542,7 @@ async function main(): Promise<void> {
   let resumeAt: string | undefined;
   try {
     while (true) {
-      log(`Starting query (session: ${sessionId || 'new'}, resumeAt: ${resumeAt || 'latest'})...`);
+      log(`Starting query (session: ${sessionId || 'new'}, resumeAt: ${sessionId ? (resumeAt || 'latest') : 'none (no session)'})...`);
 
       const queryResult = await runQuery(prompt, sessionId, mcpServerPath, containerInput, sdkEnv, resumeAt);
       if (queryResult.newSessionId) {

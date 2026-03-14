@@ -164,6 +164,9 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
   const prompt = formatMessages(missedMessages);
 
+  // Capture reset generation before running so we can detect mid-run session resets.
+  const resetGenBefore = resetGenerations[group.folder] ?? 0;
+
   // Advance cursor so the piping path in startMessageLoop won't re-fetch
   // these messages. Save the old cursor so we can roll back on error.
   const previousCursor = lastAgentTimestamp[chatJid] || '';
@@ -219,6 +222,13 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   if (idleTimer) clearTimeout(idleTimer);
 
   if (output === 'error' || hadError) {
+    // If a session reset happened while the container was running, the cursor
+    // is already correct — don't roll back or the reset message gets re-processed
+    // on every retry, creating an infinite reset loop.
+    if ((resetGenerations[group.folder] ?? 0) !== resetGenBefore) {
+      logger.info({ group: group.name }, 'Session reset occurred during agent run, skipping cursor rollback');
+      return true;
+    }
     // If we already sent output to the user, don't roll back the cursor —
     // the user got their response and re-processing would send duplicates.
     if (outputSentToUser) {
