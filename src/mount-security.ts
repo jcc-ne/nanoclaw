@@ -119,17 +119,24 @@ export function loadMountAllowlist(): MountAllowlist | null {
 }
 
 /**
- * Expand ~ to home directory and resolve to absolute path
+ * Expand ~ and ${ENV_VAR} / $ENV_VAR references, then resolve to absolute path
  */
 function expandPath(p: string): string {
   const homeDir = process.env.HOME || os.homedir();
-  if (p.startsWith('~/')) {
-    return path.join(homeDir, p.slice(2));
+
+  // Expand ${VAR} and $VAR references
+  let expanded = p.replace(/\$\{([^}]+)\}|\$([A-Za-z_][A-Za-z0-9_]*)/g, (match, braced, bare) => {
+    const varName = braced ?? bare;
+    return process.env[varName] ?? match;
+  });
+
+  if (expanded.startsWith('~/')) {
+    return path.join(homeDir, expanded.slice(2));
   }
-  if (p === '~') {
+  if (expanded === '~') {
     return homeDir;
   }
-  return path.resolve(p);
+  return path.resolve(expanded);
 }
 
 /**
