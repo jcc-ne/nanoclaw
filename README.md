@@ -1,3 +1,12 @@
+# Clawdia - Personal LLM Agent (My Tax Season Fork of NanoClaw)
+
+> My working fork of [NanoClaw](https://github.com/qwibitai/nanoclaw) configured for personal tasks like tax preparation, document processing, and general life automation.
+
+**⚠️ This is a personal fork.** I plan to contribute some improvements back to the main NanoClaw project, but this `main` branch reflects my current working setup.
+
+below is the original README from NanoClaw:
+---
+
 <p align="center">
   <img src="assets/nanoclaw-logo.png" alt="NanoClaw" width="400">
 </p>
