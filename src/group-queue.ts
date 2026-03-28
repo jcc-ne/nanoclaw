@@ -1,9 +1,10 @@
-import { ChildProcess } from 'child_process';
+import { ChildProcess, exec } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
 import { DATA_DIR, MAX_CONCURRENT_CONTAINERS } from './config.js';
 import { logger } from './logger.js';
+import { stopContainer } from './container-runtime.js';
 
 interface QueuedTask {
   id: string;
@@ -342,9 +343,20 @@ export class GroupQueue {
    */
   killContainer(groupJid: string): void {
     const state = this.groups.get(groupJid);
-    if (!state?.process || state.process.killed) return;
-    logger.info({ groupJid }, 'Killing container for session reset');
-    state.process.kill('SIGKILL');
+    if (!state) return;
+    const { containerName } = state;
+    if (containerName) {
+      logger.info({ groupJid, containerName }, 'Stopping container for session reset');
+      exec(stopContainer(containerName), { timeout: 15000 }, (err) => {
+        if (err) {
+          logger.warn({ groupJid, containerName, err }, 'docker stop failed during session reset');
+          state.process?.kill('SIGKILL');
+        }
+      });
+    } else if (state.process && !state.process.killed) {
+      logger.info({ groupJid }, 'Killing container process for session reset (no container name)');
+      state.process.kill('SIGKILL');
+    }
   }
 
   async shutdown(_gracePeriodMs: number): Promise<void> {
